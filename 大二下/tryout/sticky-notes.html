@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>便利贴墙</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: #4a4a4a;
+    overflow: hidden;
+    height: 100vh;
+    user-select: none;
+  }
+
+  /* ---- 顶部工具栏 ---- */
+  .toolbar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    translate: -50% 0;
+    z-index: 1000;
+    display: flex;
+    gap: 10px;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(12px);
+    padding: 10px 18px;
+    border-radius: 50px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.18);
+    align-items: center;
+  }
+  .toolbar button {
+    border: none;
+    background: #f5f5f5;
+    padding: 9px 20px;
+    border-radius: 40px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    transition: all .18s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .toolbar button:hover { background: #e8e8e8; transform: scale(1.03); }
+  .toolbar button.primary {
+    background: #ffd43b;
+    color: #333;
+    box-shadow: 0 2px 8px rgba(255,180,0,.35);
+  }
+  .toolbar button.primary:hover { background: #ffc800; }
+  .toolbar button.danger:hover { background: #ffe3e3; color: #c92a2a; }
+  .toolbar .separator { width: 1px; height: 24px; background: #ddd; margin: 0 4px; }
+
+  /* ---- 画板 ---- */
+  .board {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: auto;
+    cursor: grab;
+  }
+  .board:active { cursor: grabbing; }
+  .board.dragging-note { cursor: default; }
+
+  .board-surface {
+    position: relative;
+    width: 4200px;
+    height: 3200px;
+    background:
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(255,255,255,.03) 0%, transparent 50%),
+      #5a5a5a;
+    background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* 初始中心提示 */
+  .hint {
+    position: absolute;
+    top: 50%; left: 50%;
+    translate: -50% -50%;
+    color: rgba(255,255,255,.25);
+    font-size: 22px;
+    pointer-events: none;
+    letter-spacing: 2px;
+    transition: opacity .5s;
+  }
+  .hint.hidden { opacity: 0; }
+
+  /* ---- 便利贴 ---- */
+  .note {
+    position: absolute;
+    width: 240px;
+    min-height: 200px;
+    padding: 16px 14px 40px;
+    border-radius: 2px 2px 8px 3px;
+    box-shadow: 3px 4px 12px rgba(0,0,0,.22), 0 1px 3px rgba(0,0,0,.15);
+    cursor: grab;
+    transition: box-shadow .2s, scale .15s;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .note:hover { box-shadow: 5px 8px 20px rgba(0,0,0,.28); z-index: 10; }
+  .note.dragging {
+    cursor: grabbing;
+    z-index: 100;
+    box-shadow: 8px 14px 32px rgba(0,0,0,.35);
+    scale: 1.04;
+    rotate: 0deg !important;
+  }
+  .note:focus-within { z-index: 10; }
+
+  /* 便利贴颜色变体 */
+  .note.yellow  { background: #fff9c4; }
+  .note.pink    { background: #f8bbd0; }
+  .note.green   { background: #c8e6c9; }
+  .note.blue    { background: #bbdefb; }
+  .note.orange  { background: #ffe0b2; }
+  .note.purple  { background: #e1bee7; }
+
+  /* 图钉装饰 */
+  .note::before {
+    content: '';
+    position: absolute;
+    top: 6px; left: 50%;
+    translate: -50% 0;
+    width: 18px; height: 18px;
+    background: radial-gradient(circle at 40% 35%, #ff6b6b 0%, #a00 100%);
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3), inset 0 -2px 3px rgba(0,0,0,.2);
+    z-index: 2;
+  }
+
+  /* 操作栏（悬浮） */
+  .note-actions {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity .18s;
+  }
+  .note:hover .note-actions,
+  .note.dragging .note-actions { opacity: 1; }
+
+  .note-actions button {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    transition: scale .12s;
+  }
+  .note-actions button:hover { scale: 1.15; }
+  .btn-del     { background: #e03131; }
+  .btn-color   { background: #555; font-size: 12px; }
+  .btn-image   { background: #4a90d9; }
+
+  /* 颜色选择弹出 */
+  .color-popup {
+    position: absolute;
+    top: 34px;
+    right: 0;
+    display: none;
+    gap: 5px;
+    background: #fff;
+    padding: 6px 8px;
+    border-radius: 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    z-index: 101;
+    white-space: nowrap;
+  }
+  .color-popup.show { display: flex; }
+  .color-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .12s, scale .12s;
+  }
+  .color-dot:hover { border-color: #333; scale: 1.18; }
+
+  /* 便利贴主体可编辑区 */
+  .note-body {
+    flex: 1;
+    outline: none;
+    font-size: 15px;
+    line-height: 1.55;
+    color: #333;
+    word-break: break-word;
+    overflow-y: auto;
+    max-height: 340px;
+    cursor: text;
+    user-select: text;
+  }
+  .note-body:empty::before {
+    content: '写点什么…';
+    color: #bbb;
+  }
+  .note-body img {
+    max-width: 100%;
+    border-radius: 4px;
+    margin: 6px 0;
+    cursor: default;
+    display: block;
+  }
+
+  /* 便利贴底部拖拽手柄 */
+  .note-handle {
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    translate: -50% 0;
+    width: 44px;
+    height: 10px;
+    background: rgba(0,0,0,.08);
+    border-radius: 10px;
+    cursor: grab;
+  }
+  .note-handle::after {
+    content: '⋮';
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    translate: -50% 0;
+    font-size: 13px;
+    color: rgba(0,0,0,.18);
+    letter-spacing: 2px;
+  }
+
+  /* 右键菜单 */
+  .context-menu {
+    position: fixed;
+    display: none;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.22);
+    padding: 6px 0;
+    z-index: 2000;
+    min-width: 150px;
+    overflow: hidden;
+  }
+  .context-menu.show { display: block; }
+  .context-menu .item {
+    padding: 9px 18px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background .12s;
+  }
+  .context-menu .item:hover { background: #f0f0f0; }
+  .context-menu .item.danger { color: #c92a2a; }
+</style>
+</head>
+<body>
+
+<!-- 工具栏 -->
+<div class="toolbar">
+  <button class="primary" onclick="addNote()" title="添加便利贴">＋ 新建便利贴</button>
+  <span class="separator"></span>
+  <button onclick="addNote('yellow')"  style="background:#fff9c4">🟡</button>
+  <button onclick="addNote('pink')"    style="background:#f8bbd0">🩷</button>
+  <button onclick="addNote('green')"   style="background:#c8e6c9">🟢</button>
+  <button onclick="addNote('blue')"    style="background:#bbdefb">🔵</button>
+  <button onclick="addNote('orange')"  style="background:#ffe0b2">🟠</button>
+  <button onclick="addNote('purple')"  style="background:#e1bee7">🟣</button>
+  <span class="separator"></span>
+  <button class="danger" onclick="clearAll()" title="清空所有便利贴">🗑 清空</button>
+</div>
+
+<!-- 画板 -->
+<div class="board" id="board">
+  <div class="board-surface" id="surface">
+    <div class="hint" id="hint">✨ 点击上方按钮添加便利贴，或双击空白区域创建</div>
+  </div>
+</div>
+
+<!-- 右键菜单 -->
+<div class="context-menu" id="ctxMenu">
+  <div class="item" onclick="ctxAddNote()">＋ 在这里添加便利贴</div>
+  <div class="item" onclick="ctxPaste()">📋 粘贴图片</div>
+  <div class="item danger" onclick="ctxDelete()">🗑 删除此便利贴</div>
+</div>
+
+<script>
+  // ============ 全局状态 ============
+  let noteIdCounter = 0;
+  let zIndexCounter = 10;
+  let currentNoteEl = null;       // 当前右键菜单目标
+  let ctxMenuPos = null;          // 右键菜单位置（用于在此处创建便利贴）
+
+  const board    = document.getElementById('board');
+  const surface  = document.getElementById('surface');
+  const hint     = document.getElementById('hint');
+  const ctxMenu  = document.getElementById('ctxMenu');
+
+  // ============ 工具函数 ============
+  function randomRotate() {
+    return (Math.random() - 0.5) * 5; // -2.5 ~ +2.5 度
+  }
+
+  function hideHint() {
+    hint.classList.add('hidden');
+  }
+
+  // ============ 创建便利贴 ============
+  function addNote(color = 'yellow', x, y) {
+    hideHint();
+    noteIdCounter++;
+    const id = noteIdCounter;
+
+    // 计算默认位置：可见区域中心附近随机偏移
+    const boardRect = board.getBoundingClientRect();
+    const scrollLeft = board.scrollLeft;
+    const scrollTop  = board.scrollTop;
+    const cx = x != null ? x : scrollLeft + boardRect.width  / 2 - 120 + (Math.random() - 0.5) * 200;
+    const cy = y != null ? y : scrollTop  + boardRect.height / 2 - 100 + (Math.random() - 0.5) * 150;
+
+    const note = document.createElement('div');
+    note.className = `note ${color}`;
+    note.id = `note-${id}`;
+    note.style.left = cx + 'px';
+    note.style.top  = cy + 'px';
+    note.style.rotate = randomRotate() + 'deg';
+    note.style.zIndex = ++zIndexCounter;
+    note.dataset.noteId = id;
+
+    note.innerHTML = `
+      <div class="note-actions">
+        <button class="btn-image" title="插入图片" data-action="image">🖼</button>
+        <button class="btn-color" title="更换颜色" data-action="color">🎨</button>
+        <button class="btn-del" title="删除" data-action="delete">✕</button>
+        <div class="color-popup">
+          <span class="color-dot" style="background:#fff9c4" data-color="yellow"></span>
+          <span class="color-dot" style="background:#f8bbd0" data-color="pink"></span>
+          <span class="color-dot" style="background:#c8e6c9" data-color="green"></span>
+          <span class="color-dot" style="background:#bbdefb" data-color="blue"></span>
+          <span class="color-dot" style="background:#ffe0b2" data-color="orange"></span>
+          <span class="color-dot" style="background:#e1bee7" data-color="purple"></span>
+        </div>
+      </div>
+      <div class="note-body" contenteditable="true"></div>
+      <div class="note-handle" title="拖拽移动"></div>
+    `;
+
+    surface.appendChild(note);
+
+    // 绑定事件
+    bindNoteEvents(note);
+
+    // 自动聚焦
+    setTimeout(() => {
+      const body = note.querySelector('.note-body');
+      body.focus();
+    }, 50);
+
+    saveNotes();
+  }
+
+  // ============ 事件绑定 ============
+  function bindNoteEvents(note) {
+    // ---- 按钮事件 ----
+    note.querySelector('.btn-del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteNote(note);
+    });
+
+    note.querySelector('.btn-color').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const popup = note.querySelector('.color-popup');
+      popup.classList.toggle('show');
+    });
+
+    note.querySelector('.btn-image').addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerImageUpload(note);
+    });
+
+    // 颜色选择
+    note.querySelectorAll('.color-dot').forEach(dot => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const color = dot.dataset.color;
+        note.className = note.className.replace(/yellow|pink|green|blue|orange|purple/g, color);
+        note.querySelector('.color-popup').classList.remove('show');
+        saveNotes();
+      });
+    });
+
+    // 点击便利贴外部关闭颜色弹窗
+    document.addEventListener('click', (e) => {
+      note.querySelector('.color-popup').classList.remove('show');
+    });
+
+    // ---- 右键菜单 ----
+    note.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      currentNoteEl = note;
+      ctxMenuPos = null;
+      showCtxMenu(e.clientX, e.clientY);
+    });
+
+    // ---- 拖拽 ----
+    const handle = note.querySelector('.note-handle');
+    const body   = note.querySelector('.note-body');
+
+    // 拖拽手柄
+    handle.addEventListener('mousedown', (e) => startDrag(e, note));
+    // 便利贴头部区域也可以拖拽（但避免在 body 编辑区拖拽）
+    note.addEventListener('mousedown', (e) => {
+      if (e.target === body || body.contains(e.target)) return; // 编辑区不拖
+      if (e.target.closest('.note-actions')) return;            // 按钮不拖
+      startDrag(e, note);
+    });
+
+    // 内容变化时保存
+    body.addEventListener('input', () => saveNotes());
+    body.addEventListener('blur', () => saveNotes());
+
+    // 粘贴图片
+    body.addEventListener('paste', (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          insertImage(note, file);
+          return;
+        }
+      }
+    });
+
+    // 图片拖入
+    body.addEventListener('dragover', (e) => { e.preventDefault(); });
+    body.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files?.[0];
+      if (file && file.type.startsWith('image/')) {
+        insertImage(note, file);
+      }
+    });
+  }
+
+  // ============ 拖拽逻辑 ============
+  let dragTarget = null;
+  let dragStartX, dragStartY;
+  let noteStartLeft, noteStartTop;
+  let isDragging = false;
+
+  function startDrag(e, note) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragTarget = note;
+    isDragging = false;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    noteStartLeft = parseFloat(note.style.left);
+    noteStartTop  = parseFloat(note.style.top);
+    note.classList.add('dragging');
+    board.classList.add('dragging-note');
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragTarget) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      isDragging = true;
+    }
+    if (!isDragging) return;
+    dragTarget.style.left = (noteStartLeft + dx) + 'px';
+    dragTarget.style.top  = (noteStartTop  + dy) + 'px';
+    dragTarget.style.rotate = '0deg';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragTarget) return;
+    dragTarget.classList.remove('dragging');
+    board.classList.remove('dragging-note');
+    if (isDragging) {
+      dragTarget.style.rotate = randomRotate() + 'deg';
+      saveNotes();
+    }
+    dragTarget = null;
+    isDragging = false;
+  });
+
+  // 触摸支持
+  document.addEventListener('touchmove', (e) => {
+    if (!dragTarget) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragStartX;
+    const dy = touch.clientY - dragStartY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) isDragging = true;
+    if (!isDragging) return;
+    e.preventDefault();
+    dragTarget.style.left = (noteStartLeft + dx) + 'px';
+    dragTarget.style.top  = (noteStartTop  + dy) + 'px';
+    dragTarget.style.rotate = '0deg';
+  }, { passive: false });
+
+  // ============ 图片操作 ============
+  function triggerImageUpload(note) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files[0];
+      if (file) insertImage(note, file);
+    };
+    input.click();
+  }
+
+  function insertImage(note, file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const body = note.querySelector('.note-body');
+      const img = document.createElement('img');
+      img.src = reader.result;
+      img.draggable = false;
+      // 限制图片最大宽度
+      img.style.maxWidth = '100%';
+      body.appendChild(img);
+      // 光标移到图片后面
+      const range = document.createRange();
+      range.setStartAfter(img);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      saveNotes();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ============ 删除 ============
+  function deleteNote(note) {
+    note.style.scale = '0';
+    note.style.opacity = '0';
+    note.style.transition = 'all .15s';
+    setTimeout(() => {
+      note.remove();
+      saveNotes();
+      if (surface.querySelectorAll('.note').length === 0) {
+        hint.classList.remove('hidden');
+      }
+    }, 150);
+  }
+
+  function clearAll() {
+    const notes = surface.querySelectorAll('.note');
+    if (notes.length === 0) return;
+    if (!confirm(`确定要删除全部 ${notes.length} 个便利贴吗？`)) return;
+    notes.forEach(n => n.remove());
+    hint.classList.remove('hidden');
+    saveNotes();
+  }
+
+  // ============ 右键菜单 ============
+  function showCtxMenu(x, y) {
+    ctxMenu.style.left = x + 'px';
+    ctxMenu.style.top  = y + 'px';
+    ctxMenu.classList.add('show');
+  }
+
+  function hideCtxMenu() {
+    ctxMenu.classList.remove('show');
+    currentNoteEl = null;
+    ctxMenuPos = null;
+  }
+
+  document.addEventListener('click', hideCtxMenu);
+
+  // 右键画板空白区域
+  surface.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('.note')) return; // 便利贴自己处理
+    e.preventDefault();
+    currentNoteEl = null;
+
+    // 计算点击位置在画板上的坐标
+    const surfaceRect = surface.getBoundingClientRect();
+    ctxMenuPos = {
+      x: e.clientX - surfaceRect.left + board.scrollLeft,
+      y: e.clientY - surfaceRect.top  + board.scrollTop,
+    };
+    showCtxMenu(e.clientX, e.clientY);
+  });
+
+  function ctxAddNote() {
+    if (ctxMenuPos) {
+      addNote('yellow', ctxMenuPos.x, ctxMenuPos.y);
+    } else {
+      addNote();
+    }
+    hideCtxMenu();
+  }
+
+  function ctxPaste() {
+    if (!currentNoteEl) { hideCtxMenu(); return; }
+    navigator.clipboard.read().then(items => {
+      for (const item of items) {
+        if (item.types.includes('image/png') || item.types.includes('image/jpeg')) {
+          item.getType('image/png').then(blob => {
+            const file = new File([blob], 'pasted.png', { type: blob.type });
+            insertImage(currentNoteEl, file);
+          });
+          return;
+        }
+      }
+      alert('剪贴板中没有图片');
+    }).catch(() => {
+      alert('无法读取剪贴板，请使用 Ctrl+V 在便利贴内粘贴');
+    });
+    hideCtxMenu();
+  }
+
+  function ctxDelete() {
+    if (currentNoteEl) deleteNote(currentNoteEl);
+    hideCtxMenu();
+  }
+
+  // ============ 双击空白区域创建便利贴 ============
+  surface.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.note')) return;
+    const surfaceRect = surface.getBoundingClientRect();
+    const x = e.clientX - surfaceRect.left + board.scrollLeft - 120;
+    const y = e.clientY - surfaceRect.top  + board.scrollTop  - 20;
+    addNote('yellow', x, y);
+  });
+
+  // ============ 键盘快捷键 ============
+  document.addEventListener('keydown', (e) => {
+    // Ctrl+N 新建
+    if (e.ctrlKey && e.key === 'n') {
+      e.preventDefault();
+      addNote();
+    }
+    // Delete 键删除当前焦点便利贴
+    if (e.key === 'Delete' && document.activeElement?.closest('.note')) {
+      const note = document.activeElement.closest('.note');
+      deleteNote(note);
+    }
+  });
+
+  // ============ 持久化存储 ============
+  function saveNotes() {
+    const notes = [];
+    surface.querySelectorAll('.note').forEach(note => {
+      const color = note.className.match(/yellow|pink|green|blue|orange|purple/)?.[0] || 'yellow';
+      notes.push({
+        id: note.dataset.noteId,
+        color,
+        left: parseFloat(note.style.left),
+        top: parseFloat(note.style.top),
+        rotate: parseFloat(note.style.rotate),
+        zIndex: parseInt(note.style.zIndex),
+        html: note.querySelector('.note-body').innerHTML,
+      });
+    });
+    localStorage.setItem('sticky-notes-data', JSON.stringify(notes));
+  }
+
+  function loadNotes() {
+    const raw = localStorage.getItem('sticky-notes-data');
+    if (!raw) return;
+    let notes;
+    try { notes = JSON.parse(raw); } catch { return; }
+    if (!notes.length) return;
+
+    hideHint();
+    noteIdCounter = Math.max(...notes.map(n => parseInt(n.id) || 0));
+    zIndexCounter = Math.max(...notes.map(n => n.zIndex || 0));
+
+    notes.forEach(data => {
+      const note = document.createElement('div');
+      note.className = `note ${data.color || 'yellow'}`;
+      note.id = `note-${data.id}`;
+      note.style.left = data.left + 'px';
+      note.style.top  = data.top  + 'px';
+      note.style.rotate = (data.rotate || randomRotate()) + 'deg';
+      note.style.zIndex = data.zIndex || ++zIndexCounter;
+      note.dataset.noteId = data.id;
+
+      note.innerHTML = `
+        <div class="note-actions">
+          <button class="btn-image" title="插入图片" data-action="image">🖼</button>
+          <button class="btn-color" title="更换颜色" data-action="color">🎨</button>
+          <button class="btn-del" title="删除" data-action="delete">✕</button>
+          <div class="color-popup">
+            <span class="color-dot" style="background:#fff9c4" data-color="yellow"></span>
+            <span class="color-dot" style="background:#f8bbd0" data-color="pink"></span>
+            <span class="color-dot" style="background:#c8e6c9" data-color="green"></span>
+            <span class="color-dot" style="background:#bbdefb" data-color="blue"></span>
+            <span class="color-dot" style="background:#ffe0b2" data-color="orange"></span>
+            <span class="color-dot" style="background:#e1bee7" data-color="purple"></span>
+          </div>
+        </div>
+        <div class="note-body" contenteditable="true">${data.html || ''}</div>
+        <div class="note-handle" title="拖拽移动"></div>
+      `;
+
+      surface.appendChild(note);
+      bindNoteEvents(note);
+    });
+  }
+
+  // ============ 启动 ============
+  loadNotes();
+
+  // 如果有笔记，滚动到中间区域
+  if (surface.querySelectorAll('.note').length > 0) {
+    board.scrollLeft = 1800;
+    board.scrollTop  = 1200;
+  } else {
+    board.scrollLeft = 1900;
+    board.scrollTop  = 1400;
+  }
+</script>
+</body>
+</html>

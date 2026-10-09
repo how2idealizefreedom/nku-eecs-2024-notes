@@ -1,0 +1,96 @@
+\documentclass[a4paper,11pt]{ctexart}
+
+% 引入常用宏包
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+% 页面边距设置
+\geometry{left=2.5cm,right=2.5cm,top=3cm,bottom=3cm}
+
+% 超链接设置
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+
+\title{\textbf{基于 STM32 的集“信号源”与“测量仪表”一体化系统}\\ \Large 阶段性研发总结}
+\author{嵌入式开发记录}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+本项目旨在基于 STM32F103C8T6 微控制器，开发一款集“数控信号发生器”与“简易数字示波器（波形参数测量）”于一体的嵌入式仪表。截至目前，系统已成功实现非阻塞式人机交互界面、基于 SPWM 的任意频率/幅值正弦波生成，以及基于 DMA 与数字信号处理的高速波形自测功能。本文档对当前开发进度、核心思路及实现过程进行总结。
+\end{abstract}
+
+\section{项目整体进度与已实现功能}
+
+目前，我们在纯软件算法与基础硬件联调层面实现了以下四大核心功能：
+\begin{enumerate}
+    \item \textbf{多级菜单与参数编辑 UI：} 实现了通过 5 个独立按键（带软件消抖与非阻塞机制）进行光标位次移动、目标参数（电压、频率）的步进增减操作。
+    \item \textbf{定制化 OLED 汉字显示系统：} 克服了单片机 Flash 容量不足无法引入完整字库的物理限制，通过“字模提取 + 显存逐像素绘制”方案，成功实现了无闪烁的中文界面（如：电压、频率、峰值）。
+    \item \textbf{数控 SPWM 正弦波发生器：} 利用双定时器级联，输出占空比按正弦规律变化的高频方波，后续通过 RC 低通滤波器还原为平滑正弦波，支持 1-10V（逻辑映射区间）与 100-1000Hz 的数字调节。
+    \item \textbf{波形参数自动提取（Loopback 测量）：} 通过单片机内部 ADC 配合 DMA 实现无干预高速采样，并采用“极值搜索算法”与“过零检测算法”，精准测算出自发波形的峰峰值（$V_{pp}$）与真实频率。
+\end{enumerate}
+
+\section{硬件资源分配}
+
+本阶段系统的引脚映射与外设分配如下表所示：
+
+\begin{table}[htbp]
+    \centering
+    \caption{STM32F103C8T6 硬件资源分配表}
+    \vspace{0.5em}
+    \begin{tabular}{@{}ccll@{}}
+        \toprule
+        \textbf{引脚名称} & \textbf{外设功能} & \textbf{应用描述} & \textbf{电气配置} \\ \midrule
+        PA0 $\sim$ PA3, PA8 & GPIO\_Input & 五向按键（加/减/切换/左/右） & 内部上拉 (Pull-up) \\
+        PB6, PB7 & I2C1 & 驱动 SSD1306 OLED 屏幕 & 硬件 I2C, 400kHz \\
+        PA6 & TIM3\_CH1 & PWM 载波输出（信号发生端） & 推挽复用输出, 156kHz \\
+        PA5 & ADC1\_IN5 & 测量输入端（采集滤波后波形） & 模拟输入 \\
+        内部 & TIM4 & 控制 SPWM 更新频率的中断源 & 1MHz 计数基准 \\
+        内部 & DMA1\_CH1 & 搬运 ADC 转换数据至内存 & 循环模式, 半字宽度 \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{核心思路与技术实现过程}
+
+\subsection{人机交互：非阻塞式状态机与显存操作}
+\textbf{思路：} 传统的 \texttt{while} 死循环等待按键松开会导致整个系统卡死，无法兼顾波形刷新。此外，OLED 驱动需兼容特定的显存刷新机制。\\
+\textbf{实现：} 
+通过定义静态变量记录按键状态（Key Up/Down），实现按键触发的“一触即发”非阻塞扫描；在显示层面，弃用传统的页寻址函数，改用 \texttt{ssd1306\_DrawPixel} 函数，按 $16\times16$ 点阵数组的二进制位图，将汉字的笔画逐点“画”入 STM32 内存，最后调用 \texttt{UpdateScreen} 一次性推送到屏幕，彻底解决汉字撕裂与报错问题。
+
+\subsection{信号生成：SPWM 查表法与占空比重构}
+\textbf{思路：} 单片机无法直接输出模拟电压。需利用高频 PWM 的占空比等效出正弦波的瞬时幅值，并在物理层通过低通滤波剔除高频载波。\\
+\textbf{实现：}
+\begin{itemize}
+    \item \textbf{制表：} 系统初始化及电压改变时，依据公式 $y = A \sin(\omega t) + B$ 动态生成包含 100 个占空比数值的数组。通过逻辑限幅，严格保证占空比不溢出定时器周期最大值（ARR=999）。
+    \item \textbf{变频：} TIM3 负责产生 $156.2\text{kHz}$ 的固定超高频载波。TIM4 产生定时中断，每次中断将数组中的下一个值赋给 TIM3 的 CCR 寄存器。只需改变 TIM4 的中断频率，即可精确改变最终输出的正弦波频率。
+\end{itemize}
+
+\subsection{参数提取：高速 DMA 采样与 DSP 算法}
+\textbf{思路：} 不在屏幕上绘制复杂的波形曲线，而是直接通过纯粹的数学数组运算提取仪表的特征参数，极大节省了单片机算力。\\
+\textbf{实现：}
+开启 ADC 连续转换模式并联动 DMA，在后台建立长度为 2000 的超级环形缓冲区（Buffer）。
+\begin{itemize}
+    \item \textbf{幅度测量 ($V_{pp}$)：} 遍历数组，寻找最大值与最小值。经 $3.3\text{V} / 4095$ 分辨率换算，结合比例放大系数，还原出真实设定的峰峰值。
+    \item \textbf{频率测量 (Freq)：} 计算数组所有元素的算术平均值作为“直流偏置中点”。统计波形由下至上“穿过”该平均线的次数（过零检测），结合 ADC 物理采样率（经推算约为 $47.6\text{kHz}$）与数组总长，推导出实际交流频率。
+\end{itemize}
+
+\section{后续演进计划 (Future Work)}
+
+当前的测试在 $0 \sim 3.3\text{V}$ 的安全逻辑电压下运行，证明了单片机软件系统的鲁棒性。为满足最终“峰峰值 $1 \sim 10\text{V}$”的硬性技术指标，下一步必须进行硬件拓展：
+\begin{itemize}
+    \item 摒弃简单的无源 RC 滤波网络，设计基于双电源或单极性电源轨的 \textbf{二阶有源低通滤波器（如 Sallen-Key 拓扑）}。
+    \item 增加运放比例放大电路，将 STM32 输送的 $0.33 \sim 3.3\text{V}$ 内部模拟信号，线性放大至目标范围，完成本项目的终极闭环验证。
+\end{itemize}
+
+\end{document}

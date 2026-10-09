@@ -1,0 +1,39 @@
+* 3-Person Voting Circuit (NAND Gate Implementation)
+* 
+* === 电源与输入激励 ===
+* 定义 A, B, C 为不同周期的脉冲源，以便遍历 000 到 111 的全部 8 种逻辑状态
+V_A A 0 PULSE(0 5 0 1n 1n 10m 20m)
+V_B B 0 PULSE(0 5 0 1n 1n 20m 40m)
+V_C C 0 PULSE(0 5 0 1n 1n 40m 80m)
+
+* === 理想 2输入与非门 (NAND2) 子电路定义 (5V 逻辑) ===
+.SUBCKT NAND2 IN1 IN2 OUT
+* 使用行为电压源模拟逻辑门：输入均大于 2.5V 时输出 0V，否则输出 5V
+E_NAND OUT 0 VALUE={ IF( V(IN1)>2.5 & V(IN2)>2.5, 0, 5 ) }
+R_DUMMY OUT 0 1MEG
+.ENDS
+
+* === 逻辑电路连接 (使用 6 个 NAND2) ===
+* 逻辑表达式: F = ~( ~(AB) * ~(BC) * ~(AC) )
+
+* 第一级：计算三个与非项
+X1 A B N1 NAND2
+X2 B C N2 NAND2
+X3 A C N3 NAND2
+
+* 第二级：将三项 N1, N2, N3 通过与非门合成
+* 1. N4 = ~(N1 * N2)
+X4 N1 N2 N4 NAND2
+* 2. N5 = NOT(N4) = ~(N4 * N4)
+X5 N4 N4 N5 NAND2
+* 3. F = ~(N5 * N3) -> 最终输出
+X6 N5 N3 F NAND2
+
+* === 仿真设置 ===
+* 运行 80ms 瞬态分析，正好跑完一个完整的真值表周期 (8个状态)
+.TRAN 0.1m 80m
+
+* 记录要观察的节点电压
+.PRINT TRAN V(A) V(B) V(C) V(F)
+.PROBE
+.END

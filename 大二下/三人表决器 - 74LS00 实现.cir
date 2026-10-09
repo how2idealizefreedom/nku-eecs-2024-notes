@@ -1,0 +1,36 @@
+* 三人表决器 - 74LS00 实现
+* 输入 A, B, C，输出 Y = AB + AC + BC
+* 使用 74LS00 NAND 门
+
+* ========================
+* 电源与地
+VCC VCC 0 DC 5
+* ========================
+* 输入开关
+* 使用 DC 电压源模拟开关
+VA A 0 DC 0
+VB B 0 DC 0
+VC C 0 DC 0
+
+* ========================
+* NAND 门 U1A: AB -> AB'
+XU1A A B AB_n NAND2 VCC 0
+* NAND 门 U1B: AC -> AC'
+XU1B A C AC_n NAND2 VCC 0
+* NAND 门 U1C: BC -> BC'
+XU1C B C BC_n NAND2 VCC 0
+* NAND 门 U1D: (AB' AND AC' AND BC')' -> Y
+* 三输入 NAND 可以用两级实现：
+* 第一组 NAND2: AB'_AC' -> N1
+XU1D1 AB_n AC_n N1 NAND2 VCC 0
+* 第二组 NAND2: N1_BC' -> Y
+XU1D2 N1 BC_n Y NAND2 VCC 0
+
+* ========================
+* LED 输出
+RLED Y 0 330
+
+* ========================
+* 模型定义
+.model NAND2 NAND
+.ends

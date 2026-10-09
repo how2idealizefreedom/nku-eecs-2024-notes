@@ -1,0 +1,608 @@
+\documentclass[UTF8, a4paper, 11pt]{ctexart}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% 设置页边距
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+% 定义代码块的显示格式（移除危险的转义符，保证代码块绝对安全）
+\lstset{
+    language=Matlab,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    basicstyle=\ttfamily\small,
+    breaklines=true
+}
+\usepackage[UTF8]{ctex} % 支持中文
+\usepackage{geometry} % 页面边距设置
+\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+\usepackage{graphicx} % 插入图片
+\usepackage{float} % 图片位置控制
+\usepackage{caption} % 图片标题
+\usepackage{subcaption} % 子图
+\usepackage{color} % 颜色
+\usepackage{booktabs} % 三线表
+\usepackage{hyperref} % 超链接
+\usepackage{fancyhdr} % 页眉页脚
+\usepackage{amsmath}
+% 设置超链接样式
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+
+% 页眉页脚设置
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{西湖水图像处理工具}
+\fancyhead[R]{课程设计报告}
+\fancyfoot[C]{\thepage}
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen}\itshape,
+    keywordstyle=\color{blue}\bfseries,
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    frame=single,
+    frameround=tttt,
+    rulecolor=\color{black!30}
+}
+\setlength{\headheight}{15pt}
+\begin{document}
+\begin{titlepage}
+    \begin{center}
+        \vspace*{2cm}
+        \Huge{\textbf{基于 MATLAB App Designer 的交互式图像分析系统设计}}\\
+        \vspace{0.5cm}
+        \Large{\textbf{——代码备份}}\\
+        \vspace{2cm}
+        
+        \large
+        \begin{tabular}{rl}
+            \textbf{学生姓名：} & [姓名] \\  % <--- 这里改成你的名字
+            \textbf{学号：} & [学号] \\      % <--- 这里改成你的学号
+            \textbf{完成日期：} & \today \\
+        \end{tabular}
+        \vspace{3cm}
+        
+        \rule{0.8\textwidth}{0.5pt} \\
+        \vspace{0.5cm}
+        \textit{我设计并实现了一个基于 MATLAB App Designer 的交互式图像处理与特征分析 App。本 App 实现了图像增强、Canny 边缘提取，以及图像灰度 3D 拓扑图的实时渲染。}
+    \end{center}
+\end{titlepage}
+
+\newpage
+\newpage
+\begin{lstlisting}
+classdef app1 < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure          matlab.ui.Figure
+        TabGroup          matlab.ui.container.TabGroup
+        Tab               matlab.ui.container.Tab
+        GridLayout        matlab.ui.container.GridLayout
+        Panel             matlab.ui.container.Panel
+        Btn_ExportData    matlab.ui.control.Button
+        Btn_Reset         matlab.ui.control.Button
+        Slider_Intensity  matlab.ui.control.Slider
+        Label_2           matlab.ui.control.Label
+        Drop_Algo         matlab.ui.control.DropDown
+        Label             matlab.ui.control.Label
+        Btn_Load          matlab.ui.control.Button
+        UIAxes_Result     matlab.ui.control.UIAxes
+        UIAxes_Original   matlab.ui.control.UIAxes
+        Tab_2             matlab.ui.container.Tab
+        GridLayout3       matlab.ui.container.GridLayout
+        Btn_ROI           matlab.ui.control.Button
+        UIAxes_SegMain    matlab.ui.control.UIAxes
+        UIAxes_SegCrop    matlab.ui.control.UIAxes
+        DTab              matlab.ui.container.Tab
+        GridLayout2       matlab.ui.container.GridLayout
+        Btn_3D            matlab.ui.control.Button
+        UIAxes_3D         matlab.ui.control.UIAxes
+    end
+
+    
+    properties (Access = private)
+    ImgOriginal 
+    ImgCurrent  
+        Btn_Export        matlab.ui.control.Button
+        Btn_Export3D      matlab.ui.control.Button
+end
+
+    methods (Access = private)
+        
+        function processAndShowCrop(app, currentPosition)
+            
+            croppedImg = imcrop(app.ImgOriginal, currentPosition);
+            
+            if size(croppedImg, 3) == 3
+                grayCrop = rgb2gray(croppedImg);
+            else
+                grayCrop = croppedImg;
+            end
+            
+            edgeCrop = edge(grayCrop, 'Canny');
+            
+            imshow(edgeCrop, 'Parent', app.UIAxes_SegCrop);
+            title(app.UIAxes_SegCrop, 'ROI实时智能轮廓提取');
+            
+        end
+        
+    end
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+            
+        end
+
+        % Button pushed function: Btn_Load
+        function Btn_LoadButtonPushed(app, event)
+           
+            [file, path] = uigetfile({'*.jpg;*.png;*.bmp;*.tif', '图像文件'});
+            
+            if isequal(file, 0)
+                return;
+            end
+            
+            fullFileName = fullfile(path, file);
+            app.ImgOriginal = imread(fullFileName); 
+            app.ImgCurrent = app.ImgOriginal;       
+            
+            imshow(app.ImgOriginal, 'Parent', app.UIAxes_Original);
+            
+            imshow(app.ImgCurrent, 'Parent', app.UIAxes_Result);
+            
+            uialert(app.UIFigure, '图像加载成功！请选择算法进行处理。', '系统提示', 'Icon', 'success');
+        end
+
+        % Value changed function: Drop_Algo
+        function Drop_AlgoValueChanged(app, event)
+            if isempty(app.ImgOriginal)
+                uialert(app.UIFigure, '请先导入图像！', '操作错误', 'Icon', 'warning');
+                return;
+            end
+            
+            selectedAlgo = app.Drop_Algo.Value;
+            
+            d = uiprogressdlg(app.UIFigure, 'Title', '算法运行中', 'Message', ['正在执行: ', selectedAlgo]);
+            
+            try
+                switch selectedAlgo
+                    case '限制对比度增强'
+                        clipLimitValue = 0.1; 
+                        
+                        if size(app.ImgOriginal, 3) == 3
+                            labImg = rgb2lab(app.ImgOriginal);
+                            L = labImg(:,:,1) / 100;
+                            L_enhanced = adapthisteq(L, 'NumTiles', [4 4], 'ClipLimit', clipLimitValue);
+                            labImg(:,:,1) = L_enhanced * 100;
+                            app.ImgCurrent = lab2rgb(labImg);
+                        else
+                            app.ImgCurrent = adapthisteq(app.ImgOriginal, 'NumTiles', [4 4], 'ClipLimit', clipLimitValue);
+                        end
+                        
+                    case '伪彩色映射'
+                        if size(app.ImgOriginal, 3) == 3
+                            grayImg = rgb2gray(app.ImgOriginal);
+                        else
+                            grayImg = app.ImgOriginal;
+                        end
+                        % 核心映射代码
+                        app.ImgCurrent = ind2rgb(grayImg, jet(256));
+                        
+                    case '边缘提取'
+                        if size(app.ImgOriginal, 3) == 3
+                            grayImg = rgb2gray(app.ImgOriginal);
+                        else
+                            grayImg = app.ImgOriginal;
+                        end
+                        edgeImg = edge(grayImg, 'Canny');
+                        app.ImgCurrent = uint8(edgeImg) * 255; 
+                end
+                
+                imshow(app.ImgCurrent, 'Parent', app.UIAxes_Result);
+                
+            catch ME
+                uialert(app.UIFigure, ['处理失败: ' ME.message], '算法错误');
+            end
+            
+            close(d);value = app.Drop_Algo.Value;
+            
+        end
+
+        function Btn_ResetButtonPushed(app, event)
+            app.ImgCurrent = app.ImgOriginal; 
+            imshow(app.ImgCurrent, 'Parent', app.UIAxes_Result); 
+        end
+
+        % Button pushed function: Btn_3D
+        function Btn_3DButtonPushed(app, event)
+            
+            if isempty(app.ImgOriginal)
+                uialert(app.UIFigure, '请先在第一页导入图像！', '提示');
+                return;
+            end
+            
+            
+            d = uiprogressdlg(app.UIFigure, 'Title', '构建多维矩阵', 'Message', '正在进行3D渲染，请稍候...');
+            
+            if size(app.ImgOriginal, 3) == 3
+                grayImg = rgb2gray(app.ImgOriginal);
+            else
+                grayImg = app.ImgOriginal;
+            end
+            smallImg = imresize(grayImg, [200, 200]); 
+            
+            surf(app.UIAxes_3D, double(smallImg), 'EdgeColor', 'none');
+            
+            colormap(app.UIAxes_3D, 'parula'); 
+            view(app.UIAxes_3D, -37.5, 30);    
+            grid(app.UIAxes_3D, 'on');     
+            
+            title(app.UIAxes_3D, '图像空间亮度3D拓扑结构');
+            xlabel(app.UIAxes_3D, 'X轴像素坐标');
+            ylabel(app.UIAxes_3D, 'Y轴像素坐标');
+            zlabel(app.UIAxes_3D, '像素强度 (灰度值)');
+            
+            enableDefaultInteractivity(app.UIAxes_3D);
+            
+            close(d);
+        end
+
+        % Button pushed function: Btn_ROI
+        function Btn_ROIButtonPushed(app, event)
+            if isempty(app.ImgOriginal)
+                uialert(app.UIFigure, '请先在第一页导入图像！', '操作错误');
+                return;
+            end
+            
+            disableDefaultInteractivity(app.UIAxes_SegMain);
+            
+            imshow(app.ImgOriginal, 'Parent', app.UIAxes_SegMain);
+            
+            try
+                roi = drawrectangle(app.UIAxes_SegMain, 'Label', '目标提取区', 'Color', 'r', 'LineWidth', 2);
+                
+                app.processAndShowCrop(roi.Position);
+
+                addlistener(roi, 'MovingROI', @(src, event) app.processAndShowCrop(event.CurrentPosition));
+                
+            catch 
+                disp('用户取消了框选操作');
+            end
+        end
+
+        % Value changed function: Slider_Intensity
+        function Slider_IntensityValueChanged(app, event)
+            value = app.Slider_Intensity.Value;
+            
+            if isempty(app.ImgOriginal)
+                return;
+            end
+            
+            sliderVal = app.Slider_Intensity.Value;
+            
+            selectedAlgo = app.Drop_Algo.Value;
+            
+            switch selectedAlgo
+                case '限制对比度增强'
+                    clipLimitValue = 0.01 + (sliderVal / 100) * 0.19; 
+                    
+                    if size(app.ImgOriginal, 3) == 3
+                        labImg = rgb2lab(app.ImgOriginal);
+                        L = labImg(:,:,1) / 100;
+                        L_enhanced = adapthisteq(L, 'NumTiles', [4 4], 'ClipLimit', clipLimitValue);
+                        labImg(:,:,1) = L_enhanced * 100;
+                        app.ImgCurrent = lab2rgb(labImg);
+                    else
+                        app.ImgCurrent = adapthisteq(app.ImgOriginal, 'NumTiles', [4 4], 'ClipLimit', clipLimitValue);
+                    end
+                    
+                case '边缘提取'
+                    thresh = 0.1 + ((100 - sliderVal) / 100) * 0.7; 
+                    
+                    if size(app.ImgOriginal, 3) == 3
+                        grayImg = rgb2gray(app.ImgOriginal);
+                    else
+                        grayImg = app.ImgOriginal;
+                    end
+                    edgeImg = edge(grayImg, 'Canny', thresh);
+                    app.ImgCurrent = uint8(edgeImg) * 255;
+                    
+                case '伪彩色映射'
+                    alpha = sliderVal / 100; 
+                    
+                    if size(app.ImgOriginal, 3) == 3
+                        grayImg = rgb2gray(app.ImgOriginal);
+                    else
+                        grayImg = app.ImgOriginal;
+                    end
+                    
+                    pseudoImg = ind2rgb(grayImg, jet(256));
+                    grayRGB = cat(3, grayImg, grayImg, grayImg) / 255;
+                    
+                    app.ImgCurrent = alpha * pseudoImg + (1 - alpha) * double(grayRGB);
+            end
+            
+            imshow(app.ImgCurrent, 'Parent', app.UIAxes_Result);
+        end
+
+        % Button pushed function: Btn_ExportData
+        function Btn_ExportDataPushed(app, event)
+            if isempty(app.ImgCurrent)
+                uialert(app.UIFigure, '当前没有可导出的图像，请先导入并处理！', '操作错误', 'Icon', 'warning');
+                return;
+            end
+            
+            [file, path] = uiputfile({ ...
+                '*.png', '无损PNG 图像 (*.png)'; ...
+                '*.jpg', '高压JPEG 图像 (*.jpg)'; ...
+                '*.bmp', '位图 BMP (*.bmp)'}, ...
+                '保存处理结果', 'Processed_Image.png');
+            
+            if isequal(file, 0) || isequal(path, 0)
+                return;
+            end
+            
+            fullFileName = fullfile(path, file);
+            
+            try
+             
+                d = uiprogressdlg(app.UIFigure, 'Title', '导出中', 'Message', '正在写入磁盘...');
+                
+                imwrite(app.ImgCurrent, fullFileName);
+                
+                close(d);
+               
+                uialert(app.UIFigure, ['图像已成功保存至：', newline, fullFileName], '导出成功', 'Icon', 'success');
+                
+            catch ME
+                close(d);
+                uialert(app.UIFigure, ['保存失败，请检查路径权限。', newline, '错误信息: ', ME.message], '导出失败', 'Icon', 'error');
+            end
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Color = [0 0 0];
+            app.UIFigure.Position = [100 100 624 456];
+            app.UIFigure.Name = 'MATLAB App';
+            app.UIFigure.WindowState = 'maximized';
+
+            % Create TabGroup
+            app.TabGroup = uitabgroup(app.UIFigure);
+            app.TabGroup.Position = [1 -23 640 480];
+
+            % Create Tab
+            app.Tab = uitab(app.TabGroup);
+            app.Tab.Title = '智能增强';
+
+            % Create GridLayout
+            app.GridLayout = uigridlayout(app.Tab);
+            app.GridLayout.ColumnWidth = {'1.45x', '1x', '1.36x', '1.44x'};
+            app.GridLayout.RowHeight = {177, '1x'};
+            app.GridLayout.ColumnSpacing = 6;
+            app.GridLayout.Padding = [6 10 6 10];
+
+            % Create UIAxes_Original
+            app.UIAxes_Original = uiaxes(app.GridLayout);
+            title(app.UIAxes_Original, '原始图像')
+            xlabel(app.UIAxes_Original, 'X')
+            ylabel(app.UIAxes_Original, 'Y')
+            zlabel(app.UIAxes_Original, 'Z')
+            app.UIAxes_Original.FontName = 'Times New Roman';
+            app.UIAxes_Original.FontWeight = 'bold';
+            app.UIAxes_Original.XColor = [0.8 0.8 0.8];
+            app.UIAxes_Original.YColor = [0.8 0.8 0.8];
+            app.UIAxes_Original.Layout.Row = 2;
+            app.UIAxes_Original.Layout.Column = [1 2];
+
+            % Create UIAxes_Result
+            app.UIAxes_Result = uiaxes(app.GridLayout);
+            title(app.UIAxes_Result, '处理结果')
+            xlabel(app.UIAxes_Result, 'X')
+            ylabel(app.UIAxes_Result, 'Y')
+            zlabel(app.UIAxes_Result, 'Z')
+            app.UIAxes_Result.FontName = 'Times New Roman';
+            app.UIAxes_Result.FontWeight = 'bold';
+            app.UIAxes_Result.XColor = [0.651 0.651 0.651];
+            app.UIAxes_Result.YColor = [0.651 0.651 0.651];
+            app.UIAxes_Result.Layout.Row = 2;
+            app.UIAxes_Result.Layout.Column = [3 4];
+
+            % Create Panel
+            app.Panel = uipanel(app.GridLayout);
+            app.Panel.Title = '控制台';
+            app.Panel.Layout.Row = 1;
+            app.Panel.Layout.Column = [1 4];
+
+            % Create Btn_Load
+            app.Btn_Load = uibutton(app.Panel, 'push');
+            app.Btn_Load.ButtonPushedFcn = createCallbackFcn(app, @Btn_LoadButtonPushed, true);
+            app.Btn_Load.Position = [38 120 100 22];
+            app.Btn_Load.Text = '导入图像';
+
+            % Create Label
+            app.Label = uilabel(app.Panel);
+            app.Label.HorizontalAlignment = 'right';
+            app.Label.Position = [38 76 53 22];
+            app.Label.Text = '选择算法';
+
+            % Create Drop_Algo
+            app.Drop_Algo = uidropdown(app.Panel);
+            app.Drop_Algo.Items = {'限制对比度增强', '伪彩色映射', '边缘提取'};
+            app.Drop_Algo.ValueChangedFcn = createCallbackFcn(app, @Drop_AlgoValueChanged, true);
+            app.Drop_Algo.Position = [106 76 100 22];
+            app.Drop_Algo.Value = '限制对比度增强';
+
+            % Create Label_2
+            app.Label_2 = uilabel(app.Panel);
+            app.Label_2.HorizontalAlignment = 'right';
+            app.Label_2.Position = [39 36 53 22];
+            app.Label_2.Text = '增强强度';
+
+            % Create Slider_Intensity
+            app.Slider_Intensity = uislider(app.Panel);
+            app.Slider_Intensity.ValueChangedFcn = createCallbackFcn(app, @Slider_IntensityValueChanged, true);
+            app.Slider_Intensity.Position = [114 45 150 3];
+
+            % Create Btn_Reset
+            app.Btn_Reset = uibutton(app.Panel, 'push');
+            app.Btn_Reset.ButtonPushedFcn = createCallbackFcn(app, @Btn_ResetButtonPushed, true);
+            app.Btn_Reset.Position = [261 121 100 22];
+            app.Btn_Reset.Text = '恢复原图';
+
+            % Create Btn_ExportData
+            app.Btn_ExportData = uibutton(app.Panel, 'push');
+            app.Btn_ExportData.ButtonPushedFcn = createCallbackFcn(app, @Btn_ExportDataPushed, true);
+            app.Btn_ExportData.Position = [151 121 100 22];
+            app.Btn_ExportData.Text = '导出结果';
+
+            % Create Tab_2
+            app.Tab_2 = uitab(app.TabGroup);
+            app.Tab_2.Title = '交互截图';
+
+            % Create GridLayout3
+            app.GridLayout3 = uigridlayout(app.Tab_2);
+            app.GridLayout3.ColumnWidth = {'1x', 46, 45, '1.04x'};
+            app.GridLayout3.RowHeight = {'1x', 22, '1.14x', '11.28x', '8.62x'};
+            app.GridLayout3.ColumnSpacing = 4.86001586914062;
+            app.GridLayout3.Padding = [4.86001586914062 10 4.86001586914062 10];
+
+            % Create UIAxes_SegCrop
+            app.UIAxes_SegCrop = uiaxes(app.GridLayout3);
+            title(app.UIAxes_SegCrop, '效果图')
+            xlabel(app.UIAxes_SegCrop, 'X')
+            ylabel(app.UIAxes_SegCrop, 'Y')
+            zlabel(app.UIAxes_SegCrop, 'Z')
+            app.UIAxes_SegCrop.FontName = 'Ink Free';
+            app.UIAxes_SegCrop.FontWeight = 'bold';
+            app.UIAxes_SegCrop.XColor = [0.651 0.651 0.651];
+            app.UIAxes_SegCrop.YColor = [0.651 0.651 0.651];
+            app.UIAxes_SegCrop.Layout.Row = 4;
+            app.UIAxes_SegCrop.Layout.Column = [3 4];
+
+            % Create UIAxes_SegMain
+            app.UIAxes_SegMain = uiaxes(app.GridLayout3);
+            title(app.UIAxes_SegMain, '原图')
+            xlabel(app.UIAxes_SegMain, 'X')
+            ylabel(app.UIAxes_SegMain, 'Y')
+            zlabel(app.UIAxes_SegMain, 'Z')
+            app.UIAxes_SegMain.FontName = 'Ink Free';
+            app.UIAxes_SegMain.FontWeight = 'bold';
+            app.UIAxes_SegMain.XColor = [0.651 0.651 0.651];
+            app.UIAxes_SegMain.YColor = [0.651 0.651 0.651];
+            app.UIAxes_SegMain.ZColor = [0.651 0.651 0.651];
+            app.UIAxes_SegMain.Layout.Row = 4;
+            app.UIAxes_SegMain.Layout.Column = [1 2];
+            colormap(app.UIAxes_SegMain, 'winter')
+
+            % Create Btn_ROI
+            app.Btn_ROI = uibutton(app.GridLayout3, 'push');
+            app.Btn_ROI.ButtonPushedFcn = createCallbackFcn(app, @Btn_ROIButtonPushed, true);
+            app.Btn_ROI.Layout.Row = 2;
+            app.Btn_ROI.Layout.Column = [2 3];
+            app.Btn_ROI.Text = '交互截图';
+
+            % Create DTab
+            app.DTab = uitab(app.TabGroup);
+            app.DTab.Title = '3D映射地貌图';
+
+            % Create GridLayout2
+            app.GridLayout2 = uigridlayout(app.DTab);
+            app.GridLayout2.ColumnWidth = {'1.03x', 100, '1x'};
+            app.GridLayout2.RowHeight = {56, '1x', '16.1x'};
+            app.GridLayout2.ColumnSpacing = 2.5;
+            app.GridLayout2.Padding = [2.5 10 2.5 10];
+
+            % Create UIAxes_3D
+            app.UIAxes_3D = uiaxes(app.GridLayout2);
+            title(app.UIAxes_3D, '3D地貌图')
+            xlabel(app.UIAxes_3D, 'X')
+            ylabel(app.UIAxes_3D, 'Y')
+            zlabel(app.UIAxes_3D, 'Z')
+            app.UIAxes_3D.Layout.Row = 3;
+            app.UIAxes_3D.Layout.Column = [1 3];
+
+            % Create Btn_3D
+            app.Btn_3D = uibutton(app.GridLayout2, 'push');
+            app.Btn_3D.ButtonPushedFcn = createCallbackFcn(app, @Btn_3DButtonPushed, true);
+            app.Btn_3D.Layout.Row = 1;
+            app.Btn_3D.Layout.Column = 2;
+            app.Btn_3D.Text = '生成3D地貌图';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = app1
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
+\end{lstlisting}
+\end{document}
